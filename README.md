@@ -1,0 +1,2 @@
+The idea of the program is to get a player of the game Fortnite's statistics (game is a placeholder, could be any multiplayer really) and looks for any abnormal drops in performance after a large update.
+This is because oftentimes people who are cheating in a game will turn off their hacks for a short while after an update to give cheat developers time to update the hack so it doesn't get detected.
