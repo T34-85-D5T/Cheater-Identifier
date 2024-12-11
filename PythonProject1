@@ -1,0 +1,181 @@
+import os
+import time
+import matplotlib.pyplot as plt
+import pandas as pd
+import requests
+import schedule
+
+# --- Configuration ---
+API_KEY = "ca279354-d078a785-4cfa31b4-ab8e863e"
+BASE_URL = "https://fortniteapi.io/v1/"
+FILENAME = "stats.csv"
+
+# Global flag to track if a job is currently running
+job_running = False
+
+# --- Function: Lookup Account ID ---
+def lookup_account_id(username):
+    url = f"{BASE_URL}lookup?username={username}"
+    headers = {"Authorization": API_KEY}
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        account_id = data.get("account_id")
+        if account_id:
+            return account_id
+        else:
+            print(f"Account not found for username: {username}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"Error looking up account ID for {username}: {e}")
+        return None
+
+
+# --- Function: Fetch Player Stats ---
+def get_player_stats(account_id):
+    url = f"{BASE_URL}stats?account={account_id}"
+    headers = {"Authorization": API_KEY}
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        # Check if 'result' is True
+        if data.get("result"):
+            # Extract stats from the different categories: 'global_stats', 'solo', 'duo', etc.
+            stats = {
+                "kills": 0,
+                "matchesPlayed": 0
+            }
+            if 'global_stats' in data:
+                global_stats = data['global_stats']
+                # Aggregate stats from all categories
+                for category, stats_data in global_stats.items():
+                    stats["kills"] += stats_data.get("kills", 0)
+                    stats["matchesPlayed"] += stats_data.get("matchesPlayed", 0)
+
+            return stats
+        else:
+            print(f"No valid stats found for account ID {account_id}. Response data: {data}")
+            return {}
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching stats for account ID {account_id}: {e}")
+        return {}
+
+
+# --- Function: Save Stats to CSV ---
+def save_stats_to_csv(username, stats):
+    # Only save stats that have values
+    if any(value != 0 for value in stats.values()):
+        df = pd.DataFrame([{
+            "username": username,
+            "timestamp": pd.Timestamp.now().isoformat(),  # Ensure ISO 8601 format
+            "kills": stats.get("kills", 0),
+            "matches_played": stats.get("matchesPlayed", 0),
+        }])
+        file_exists = os.path.exists(FILENAME)
+        df.to_csv(FILENAME, mode="a", header=not file_exists, index=False)
+    else:
+        print(f"No valid stats to save for {username}")
+
+
+# --- Function: Detect Performance Drop ---
+def detect_performance_drop():
+    if not os.path.exists(FILENAME):
+        print("No data available for analysis.")
+        return []
+
+    df = pd.read_csv(FILENAME)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])  # Ensure proper timestamp format
+    grouped = df.groupby("username")
+
+    results = []
+    for username, group in grouped:
+        group = group.sort_values(by="timestamp")
+        if len(group) > 1:
+            before_update = group.iloc[0]
+            after_update = group.iloc[-1]
+            if after_update["kills"] < 0.7 * before_update["kills"]:  # Example threshold
+                print(f"Performance drop detected for {username}.")
+                results.append(username)
+    return results
+
+
+# --- Function: Plot Player Performance ---
+def plot_player_performance(username):
+    if not os.path.exists(FILENAME):
+        print("No data available for visualization.")
+        return
+
+    df = pd.read_csv(FILENAME)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])  # Ensure proper timestamp format
+    player_data = df[df["username"] == username]
+    if player_data.empty:
+        print(f"No data found for {username}.")
+        return
+
+    # Plot kills and matches played over time
+    plt.plot(player_data["timestamp"], player_data["kills"], label="Kills")
+    plt.plot(player_data["timestamp"], player_data["matches_played"], label="Matches Played", linestyle='--')
+
+    plt.title(f"Performance Trend for {username}")
+    plt.xlabel("Time")
+    plt.ylabel("Stats")
+    plt.legend()
+    plt.grid(True)
+    plt.xticks(rotation=45)
+    plt.show()
+
+
+# --- Function: Collect Stats (with overlapping job prevention) ---
+def collect_stats():
+    global job_running  # Access the global flag to check and update its value
+
+    # Prevent the job from running if it's already running
+    if job_running:
+        print("Collect stats job is already running. Skipping this cycle.")
+        return
+
+    job_running = True  # Set the flag to indicate the job is running
+    print(f"Starting stat collection at {time.ctime()}...")
+
+    # Get stats for each player and save them
+    for player in players:
+        account_id = lookup_account_id(player)  # Lookup account ID
+        if account_id:
+            stats = get_player_stats(account_id)  # Fetch stats using account ID
+            if stats:
+                save_stats_to_csv(player, stats)
+
+    print(f"Finished stat collection at {time.ctime()}.")
+    job_running = False  # Reset the flag when the job is done
+
+
+# --- Main Execution ---
+if __name__ == "__main__":
+    # Ask the user for players before starting the scheduled collection
+    players = []  # List to store player usernames
+    while True:
+        player = input("Enter a player username (or type 'done' to finish): ")
+        if player.lower() == "done":
+            break
+        players.append(player)
+
+    # If no players are entered, exit the program
+    if not players:
+        print("No players entered. Exiting.")
+        exit()
+
+    # Now start the scheduling job
+    print("Script is running. Collecting data every 30 seconds...")
+
+    # Schedule the collection job
+    schedule.every(30).seconds.do(collect_stats)  # Every 30 secs
+
+    try:
+        while True:
+            schedule.run_pending()
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Program interrupted, exiting...")
