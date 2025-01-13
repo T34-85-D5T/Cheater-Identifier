@@ -5,15 +5,20 @@ import pandas as pd
 import requests
 import schedule
 
-# --- Configuration ---
+
 API_KEY = "ca279354-d078a785-4cfa31b4-ab8e863e"
 BASE_URL = "https://fortniteapi.io/v1/"
 FILENAME = "stats.csv"
+KILL_DROP_THRESH = 0.7
 
 # Global flag to track if a job is currently running
 job_running = False
 
 # --- Function: Lookup Account ID ---
+#-- should use type annotations like:
+#-- def lookup_account_id(username: str) -> str:
+#-- Also always have a docstring for public functions
+
 def lookup_account_id(username):
     url = f"{BASE_URL}lookup?username={username}"
     headers = {"Authorization": API_KEY}
@@ -25,7 +30,7 @@ def lookup_account_id(username):
         if account_id:
             return account_id
         else:
-            print(f"Account not found for username: {username}")
+            raise (f"Account not found for username: {username}")
             return None
     except requests.exceptions.RequestException as e:
         print(f"Error looking up account ID for {username}: {e}")
@@ -43,13 +48,13 @@ def get_player_stats(account_id):
 
         # Check if 'result' is True
         if data.get("result"):
-            # Extract stats from the different categories: 'global_stats', 'solo', 'duo', etc.
+            # Extract stats from 'global_stats'
             stats = {
                 "kills": 0,
                 "matchesPlayed": 0
             }
-            if 'global_stats' in data:
-                global_stats = data['global_stats']
+            if "global_stats" in data:
+                global_stats = data["global_stats"]
                 # Aggregate stats from all categories
                 for category, stats_data in global_stats.items():
                     stats["kills"] += stats_data.get("kills", 0)
@@ -96,7 +101,7 @@ def detect_performance_drop():
         if len(group) > 1:
             before_update = group.iloc[0]
             after_update = group.iloc[-1]
-            if after_update["kills"] < 0.7 * before_update["kills"]:  # Example threshold
+            if after_update["kills"] < KILL_DROP_THRESH * before_update["kills"]:
                 print(f"Performance drop detected for {username}.")
                 results.append(username)
     return results
