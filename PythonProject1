@@ -15,11 +15,8 @@ KILL_DROP_THRESH = 0.7
 job_running = False
 
 # --- Function: Lookup Account ID ---
-#-- should use type annotations like:
-#-- def lookup_account_id(username: str) -> str:
-#-- Also always have a docstring for public functions
 
-def lookup_account_id(username):
+def lookup_account_id(username: str) -> str:
     url = f"{BASE_URL}lookup?username={username}"
     headers = {"Authorization": API_KEY}
     try:
@@ -38,6 +35,7 @@ def lookup_account_id(username):
 
 
 # --- Function: Fetch Player Stats ---
+
 def get_player_stats(account_id):
     url = f"{BASE_URL}stats?account={account_id}"
     headers = {"Authorization": API_KEY}
